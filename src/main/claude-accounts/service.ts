@@ -213,6 +213,30 @@ export class ClaudeAccountService {
     if (!captured.identity.email) {
       throw new Error('Claude login completed, but Orca could not resolve the account email.')
     }
+    // Why: the browser's active claude.ai SSO session decides whose tokens the login
+    // captures; silently adopting a different identity would repoint every worktree
+    // pinned to this entry at another person's account.
+    if (
+      account.email &&
+      captured.identity.email.trim().toLowerCase() !== account.email.trim().toLowerCase()
+    ) {
+      try {
+        await this.restoreManagedCredentialsSnapshot(
+          accountId,
+          managedAuthPath,
+          previousManagedAuth
+        )
+        this.restoreManagedOauthSnapshot(accountId, managedAuthPath, previousManagedAuth)
+      } catch (rollbackError) {
+        console.warn(
+          '[claude-accounts] Failed to restore managed auth after identity mismatch:',
+          rollbackError
+        )
+      }
+      throw new Error(
+        `Claude sign-in returned ${captured.identity.email.trim()}, but this entry is ${account.email}. Sign out of claude.ai in your browser (or use a private window), then re-authenticate as ${account.email}.`
+      )
+    }
 
     const settings = this.store.getSettings()
     const now = Date.now()
